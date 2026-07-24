@@ -37,13 +37,13 @@ public class JdbcStockRepository implements StockRepository {
     @Override
     public Optional<Stock> findById(Long id) {
         var results = jdbc.query("SELECT * FROM stock WHERE id = ?", stockRowMapper, id);
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.getFirst());
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
     @Override
     public Optional<Stock> findBySymbol(String symbol) {
         var results = jdbc.query("SELECT * FROM stock WHERE symbol = ?", stockRowMapper, symbol);
-        return results.isEmpty() ? Optional.empty() : Optional.of(results.getFirst());
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
     @Override
