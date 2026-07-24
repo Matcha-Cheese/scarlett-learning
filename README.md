@@ -1,219 +1,189 @@
-# 模块 09 实验 — 使用 GitHub Actions 持续集成
-# Module 09 Lab — Continuous Integration with GitHub Actions
+# Module 08 Lab — Introduction to Docker
 
-## 目标 | Objective
-为 Stock Tracker Spring Boot 应用添加一个 GitHub Actions CI 工作流，使每次
-`push` 和 `pull request` 都能自动构建项目并运行测试。
+## Objective
+Run a MySQL database as a Docker container, then write a `Dockerfile` for the Stock Tracker
+Spring Boot application, build and run it as a second container, and connect the two together.
+Finally, add a simple HTML/JS frontend served from inside the Spring Boot container.
 
-Add a GitHub Actions CI workflow to the Stock Tracker Spring Boot application so that every
-push and pull request automatically builds the project and runs the tests.
+## Prerequisites
+- Docker Desktop installed and running (`docker --version` should respond)
+- Java 17 and Maven installed locally
 
-## 前置条件 | Prerequisites
-- 一个 GitHub 账号  
-  A GitHub account
-- 本地已安装 Git  
-  Git installed locally
-- 本地已有模块 06 的解答（或你自己完成的 stocks 应用）  
-  The Module 06 solution (or your own completed stocks application) available locally
-- 本实验不需要 Docker —— 测试使用 Mockito，不需要数据库  
-  Docker not required for this lab — the tests use Mockito and do not need a database
-
-## 概览 | Overview
-你将会：
-1. 将 stocks 应用推送到你自己的 GitHub 仓库
-2. 创建 `.github/workflows/ci.yml` 工作流文件
-3. 推送工作流并观察 GitHub Actions 执行
-4. 人为引入一个测试失败并观察 CI 失败
-5. 修复失败并观察 CI 再次变绿
-
-You will:
-1. Push the stocks application to your own GitHub repository
-2. Create a `.github/workflows/ci.yml` workflow file
-3. Push the workflow and watch GitHub Actions run it
-4. Introduce a deliberate test failure and observe the CI failure
-5. Fix the failure and watch CI go green again
+## What is provided
+The `labs/08-docker/` folder contains a complete Spring Boot application (the stocks REST API
+from Module 06). It connects to MySQL on `localhost:3306`. On startup it seeds three stocks.
 
 ---
 
-## 步骤 | Steps
+## Steps
 
-### 第 1 步 — 创建 GitHub 仓库 | Step 1 — Create a GitHub repository
-1. 登录 GitHub，创建一个名为 `stock-tracker` 的新仓库  
-   Log in to GitHub and create a new repository called `stock-tracker`
-2. 保持仓库为空（不要在网页 UI 中添加 README 或 .gitignore）  
-   Leave it empty (do not add README or .gitignore via the UI)
-
-### 第 2 步 — 将应用推送到 GitHub | Step 2 — Push the application to GitHub
-在模块 06 的解答目录（或你自己完成的 stocks 应用目录）执行：  
-From the Module 06 solution directory (or your own completed stocks app):
+### Step 1 — Run MySQL in a container
+No MySQL installation needed. Pull and run the official MySQL 8 image:
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit - stocks REST API"
-git branch -M main
-git remote add origin https://github.com/YOUR-USERNAME/stock-tracker.git
-git push -u origin main
+docker run -d \
+  --name stocksdb \
+  -e MYSQL_ROOT_PASSWORD=rootpass \
+  -e MYSQL_DATABASE=stocksdb \
+  -e MYSQL_USER=appuser \
+  -e MYSQL_PASSWORD=apppass \
+  -p 3306:3306 \
+  mysql:8
 ```
 
-在 GitHub 上打开仓库，确认源码已成功上传。  
-Open the repository on GitHub and confirm the source code is there.
+Wait about 10 seconds then check it is ready:
+
+```bash
+docker logs stocksdb
+# Look for the line: ready for connections
+```
 
 ---
 
-### 第 3 步 — 创建工作流文件 | Step 3 — Create the workflow file
-在你的项目中创建文件 `.github/workflows/ci.yml`。  
-In your project, create the file `.github/workflows/ci.yml`.
+### Step 2 — Verify the app runs locally against the containerised MySQL
+```bash
+cd labs/08-docker
+mvn spring-boot:run
+```
 
-完成下面每个 TODO：  
+Visit `http://localhost:8080/api/stocks` — you should see a JSON array of three stocks
+being served from MySQL running inside Docker.
+
+Stop the app (`Ctrl+C`) before moving on.
+
+---
+
+### Step 3 — Write the Dockerfile
+Create a file called `Dockerfile` (no extension) in the `labs/08-docker/` folder.
 Complete each TODO:
 
-```yaml
-# TODO 1: 给工作流命名，例如 "CI" / Give the workflow a name, e.g. "CI"
-name: ???
+```dockerfile
+# Stage 1: build the JAR
+# TODO 1: Start FROM the maven:3.9-eclipse-temurin-17 image. Name this stage 'build'.
+FROM ???
 
-# TODO 2: 设置触发器 - 对 main 分支的 push 和 pull_request 都要触发
-# TODO 2: Set the trigger - run on push AND pull_request to the main branch
-on:
-  push:
-    branches: [ ??? ]
-  pull_request:
-    branches: [ ??? ]
+WORKDIR /app
 
-jobs:
-  build:
-    # TODO 3: 选择运行器 - 使用最新的 Ubuntu 托管运行器
-    # TODO 3: Choose a runner - use the latest Ubuntu hosted runner
-    runs-on: ???
+# TODO 2: Copy pom.xml into the working directory
+COPY ??? .
 
-    steps:
-      # TODO 4: 使用官方 action 检出仓库代码
-      # TODO 4: Check out the repository code using the official action
-      - name: Checkout source
-        uses: actions/???@v4
+# TODO 3: Download all dependencies into the image layer cache
+#         Hint: mvn dependency:go-offline -q
+RUN ???
 
-      # TODO 5: 设置 Java 17（Temurin 发行版）并启用 Maven 缓存
-      # TODO 5: Set up Java 17 (Temurin distribution) with Maven cache
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '???'
-          distribution: '???'
-          cache: ???
+# TODO 4: Copy the src directory into the image
+COPY ??? ./src
 
-      # TODO 6: 使用 Maven 构建项目，跳过测试
-      # TODO 6: Build the project with Maven, skipping tests
-      - name: Build with Maven
-        run: mvn -B package -DskipTests
+# TODO 5: Package the application, skipping tests
+#         Hint: mvn package -DskipTests -q
+RUN ???
 
-      # TODO 7: 运行测试
-      # TODO 7: Run the tests
-      - name: Run tests
-        run: ???
+# Stage 2: run the JAR in a minimal image
+# TODO 6: Start FROM eclipse-temurin:17-jre-alpine
+FROM ???
+
+WORKDIR /app
+
+# TODO 7: Copy the JAR from the build stage into this image as app.jar
+#         Hint: use --from=build and /app/target/*.jar
+COPY ??? app.jar
+
+# TODO 8: Tell Docker which port the app listens on
+EXPOSE ???
+
+# TODO 9: Set the command to run the JAR
+#         Hint: ENTRYPOINT with JSON array syntax
+ENTRYPOINT ???
 ```
 
 ---
 
-### 第 4 步 — 推送工作流并观察运行 | Step 4 — Push the workflow and watch it run
+### Step 4 — Build the image
 ```bash
-git add .github/workflows/ci.yml
-git commit -m "Add CI workflow"
-git push
+docker build -t stock-app:v1 .
 ```
 
-进入你在 GitHub 上的仓库，点击 **Actions** 标签页。  
-Go to your repository on GitHub and click the **Actions** tab.
-
-几秒内你应该能看到一次工作流运行。  
-You should see the workflow run appear within a few seconds.
-
-点开这次运行，再进入 `build` 作业，展开每个步骤查看日志输出。  
-Click into the run, then into the `build` job, and expand each step to see the log output.
-
-运行应以绿色对勾完成。  
-The run should complete with a green tick.
-
----
-
-### 第 5 步 — 人为引入一个失败 | Step 5 — Introduce a deliberate failure
-打开 `src/main/java/com/stocks/service/StockServiceImpl.java`。  
-Open `src/main/java/com/stocks/service/StockServiceImpl.java`.
-
-找到 `addStock` 方法，修改重复检查条件，让它总是抛异常：  
-Find the `addStock` method and change the duplicate-check condition so it always throws:
-
-```java
-// Temporarily break the duplicate check
-throw new IllegalArgumentException("Always broken: " + stock.symbol());
-```
-
-提交并推送：  
-Commit and push:
+Watch the output. Run the build a second time and observe the CACHED layers:
 
 ```bash
-git add src/main/java/com/stocks/service/StockServiceImpl.java
-git commit -m "Break addStock for CI demo"
-git push
+docker build -t stock-app:v1 .
 ```
-
-观察 **Actions** 标签页 —— 这次运行应变为红色。点进失败记录，查看是哪个测试捕获了问题以及原因。  
-Watch the **Actions** tab — the run should turn red. Click into the failure and find which test caught it and why.
 
 ---
 
-### 第 6 步 — 修复失败并恢复绿色 | Step 6 — Fix the failure and go green
-撤销你对 `StockServiceImpl` 的改动：  
-Revert your change to `StockServiceImpl`:
+### Step 5 — Run the app container
+The app container needs to reach MySQL. We pass the datasource URL as an environment variable
+using `host.docker.internal` so the app container can reach the MySQL container via the host:
 
 ```bash
-git revert HEAD
-git push
+docker run -d \
+--network stock-network \
+  -p 8081:8080 \
+  --name stock-app \
+  --add-host=host.docker.internal:host-gateway \
+  -e SPRING_DATASOURCE_URL="jdbc:mysql://stocksdb:3306/stocksdb?useSSL=false&allowPublicKeyRetrieval=true" \
+  -e SPRING_DATASOURCE_USERNAME=appuser \
+  -e SPRING_DATASOURCE_PASSWORD=apppass \
+  stock-app:v1
 ```
 
-再次观察 Actions 标签页 —— CI 应恢复绿色。  
-Watch the Actions tab — CI should go green again.
+Verify it is running and test the API:
+
+```bash
+docker ps
+docker logs stock-app
+curl http://localhost:8080/api/stocks
+```
 
 ---
 
-### 第 7 步 — 添加构建状态徽章（可选进阶） | Step 7 — Add a build status badge (stretch)
-GitHub 会为你的工作流生成徽章 URL。可在以下位置找到：  
-GitHub generates a badge URL for your workflow. Find it at:
+### Step 6 — Add a frontend
+Create `src/main/resources/static/index.html` with an HTML page that:
+1. Has a heading "Stock Tracker"
+2. Uses `fetch('/api/stocks')` to load stocks from the API
+3. Displays them in a `<table>` with columns: Symbol, Company, Sector, Exchange
 
-**Actions 标签页 > 你的工作流 > 右上角 "..." 菜单 > Create status badge**  
-**Actions tab > your workflow > top-right "..." menu > Create status badge**
+Rebuild and re-run:
 
-复制 markdown 并粘贴到你的 `README.md`：  
-Copy the markdown and paste it into your `README.md`:
-
-```markdown
-![CI](https://github.com/YOUR-USERNAME/stock-tracker/actions/workflows/ci.yml/badge.svg)
+```bash
+docker stop stock-app && docker rm stock-app
+docker build -t stock-app:v2 .
+docker run -d -p 8080:8080 --name stock-app \
+  -e SPRING_DATASOURCE_URL="jdbc:mysql://host.docker.internal:3306/stocksdb?useSSL=false&allowPublicKeyRetrieval=true" \
+  -e SPRING_DATASOURCE_USERNAME=appuser \
+  -e SPRING_DATASOURCE_PASSWORD=apppass \
+  stock-app:v2
 ```
 
-提交并推送后，徽章会显示在仓库首页。  
-Commit and push — the badge appears on your repo's home page.
+Open `http://localhost:8080` in a browser — your table should be populated with stocks.
 
 ---
 
-## 验收标准 | Acceptance Criteria
-- 工作流文件位于 `.github/workflows/ci.yml`  
-  The workflow file is at `.github/workflows/ci.yml`
-- 向 `main` 分支推送时会自动触发工作流  
-  A push to `main` triggers the workflow automatically
-- Actions UI 中构建步骤和测试步骤分别独立显示  
-  Both the build step and the test step appear as separate steps in the Actions UI
-- 人为引入测试失败后，工作流运行显示红色  
-  A deliberate test failure causes the workflow run to show red
-- 修复失败并再次推送后，CI 恢复绿色  
-  Fixing the failure and pushing again returns CI to green
+### Step 7 — Explore useful Docker commands
+```bash
+docker ps                          # list running containers
+docker ps -a                       # include stopped containers
+docker logs stock-app              # view application output
+docker exec -it stock-app sh       # shell inside the container
+docker stop stock-app              # stop
+docker rm stock-app                # remove
+docker images                      # list local images
+docker rmi stock-app:v1            # remove an image
+docker stop stocksdb && docker rm stocksdb
+```
 
-## 关键问题 | Key Questions
-1. 作为触发器，`push` 与 `pull_request` 有什么区别？  
-   What is the difference between `push` and `pull_request` as triggers?
-2. 为什么要把 `mvn package -DskipTests` 和 `mvn test` 分成两个步骤？  
-   Why do we separate `mvn package -DskipTests` and `mvn test` into two steps?
-3. `cache: maven` 的作用是什么？为什么它会影响构建速度？  
-   What does `cache: maven` do, and why does it matter for build speed?
-4. 什么是 GitHub 托管运行器？默认预装了哪些内容？  
-   What is a GitHub-hosted runner, and what is installed on it by default?
-5. 如果你的测试需要真实的 MySQL 数据库，应该如何在工作流中提供它？  
-   If your tests needed a real MySQL database, how would you provide one in the workflow?
+---
+
+## Acceptance Criteria
+- MySQL runs as a Docker container with no local MySQL installation
+- `docker build` completes without errors
+- The app container starts and `GET /api/stocks` returns three stocks
+- The second build (unchanged `pom.xml`) shows CACHED for the dependency layer
+- `http://localhost:8080` serves your HTML page with stocks loaded from the API
+
+## Key Questions
+1. Why do we COPY `pom.xml` and run `mvn dependency:go-offline` before copying `src/`?
+2. Why does the final image use `eclipse-temurin:17-jre-alpine` instead of the Maven image?
+3. What is the difference between `EXPOSE` and `-p` in `docker run`?
+4. Why do we pass `SPRING_DATASOURCE_URL` as an environment variable rather than baking it into `application.properties`?
+5. What would happen to the data in MySQL if you ran `docker rm stocksdb`?
